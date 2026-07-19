@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- **Breaking:** `create_intent` now requires `idempotency_key` (keyword-only).
+  The API rejects intent creation without an idempotency key (`400`); omitting
+  the argument raises `TypeError`, and a blank key raises `ValueError` before
+  any request is sent.
+
 ## [0.1.0] - 2026-07-08
 
 ### Added

@@ -72,23 +72,28 @@ class QintClient:
         amount: AmountLike,
         currency: CurrencyLike,
         *,
+        idempotency_key: str,
         title: Optional[str] = None,
-        idempotency_key: Optional[str] = None,
         return_url: Optional[str] = None,
     ) -> Intent:
         """Create a payment intent (needs an API key with the ``Write`` scope).
 
+        ``idempotency_key`` is required and must be unique per merchant (your
+        order id works well) — the API rejects creates without one. Retrying
+        with the same key returns the original intent instead of a duplicate.
+
         Returns the created (or, on an idempotent replay, the existing) intent.
         Send the buyer to ``intent.checkout_url`` to complete payment.
         """
+        if not idempotency_key or not str(idempotency_key).strip():
+            raise ValueError("idempotency_key is required")
         body: Dict[str, Any] = {
             "amount": _amount_to_json(amount),
             "currency": str(currency),
+            "idempotencyKey": idempotency_key,
         }
         if title is not None:
             body["title"] = title
-        if idempotency_key is not None:
-            body["idempotencyKey"] = idempotency_key
         if return_url is not None:
             body["returnUrl"] = return_url
 

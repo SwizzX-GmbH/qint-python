@@ -100,16 +100,34 @@ def test_create_intent_omits_optional_fields():
     t = FakeTransport(status=201, body=INTENT_JSON)
     client = make_client(t)
 
-    client.create_intent(amount=100, currency="EUR")
+    client.create_intent(amount=100, currency="EUR", idempotency_key="order-100")
 
-    assert t.last["body"] == {"amount": 100, "currency": "EUR"}
+    assert t.last["body"] == {
+        "amount": 100,
+        "currency": "EUR",
+        "idempotencyKey": "order-100",
+    }
+
+
+def test_create_intent_requires_idempotency_key():
+    t = FakeTransport(status=201, body=INTENT_JSON)
+    client = make_client(t)
+
+    # omitted entirely -> TypeError (missing required keyword-only argument)
+    with pytest.raises(TypeError):
+        client.create_intent(amount=100, currency="EUR")  # type: ignore[call-arg]
+    # blank -> ValueError, and no request is sent either way
+    with pytest.raises(ValueError, match="idempotency_key"):
+        client.create_intent(amount=100, currency="EUR", idempotency_key="  ")
+
+    assert t.calls == []
 
 
 def test_create_intent_integer_amount_stays_integer():
     t = FakeTransport(status=201, body=INTENT_JSON)
     client = make_client(t)
 
-    client.create_intent(amount=Decimal("50.00"), currency="USD")
+    client.create_intent(amount=Decimal("50.00"), currency="USD", idempotency_key="order-50")
 
     assert t.last["body"]["amount"] == 50
     assert isinstance(t.last["body"]["amount"], int)
@@ -162,7 +180,7 @@ def test_custom_base_url_is_respected():
     t = FakeTransport(status=201, body=INTENT_JSON)
     client = QintClient("qk_live_x", base_url="https://api.qint.ch/api/v1/", transport=t)
 
-    client.create_intent(amount=10, currency="CHF")
+    client.create_intent(amount=10, currency="CHF", idempotency_key="order-10")
 
     # trailing slash normalised, no double slash
     assert t.last["url"] == "https://api.qint.ch/api/v1/intents"
@@ -179,7 +197,7 @@ def test_non_2xx_raises_typed_api_error_with_detail():
     client = make_client(t)
 
     with pytest.raises(QintApiError) as excinfo:
-        client.create_intent(amount=10, currency="CHF")
+        client.create_intent(amount=10, currency="CHF", idempotency_key="order-10")
 
     err = excinfo.value
     assert err.status_code == 403
@@ -196,4 +214,4 @@ def test_missing_api_key_raises():
 def test_bool_amount_rejected():
     client = make_client(FakeTransport(status=201, body=INTENT_JSON))
     with pytest.raises(TypeError):
-        client.create_intent(amount=True, currency="CHF")
+        client.create_intent(amount=True, currency="CHF", idempotency_key="order-x")

@@ -34,6 +34,7 @@ qint = QintClient("qk_live_...")  # your API key (needs the Write scope)
 intent = qint.create_intent(
     amount="49.90",
     currency="CHF",
+    idempotency_key="order-1024",  # required — unique per merchant; safe to retry
     title="Order #1024",
     return_url="https://shop.example/thanks",
 )
@@ -65,8 +66,8 @@ client.create_intent(
     amount,                       # int | float | str | Decimal (major units)
     currency,                     # "CHF" | "EUR" | "USD" or qint.Currency
     *,
+    idempotency_key: str,         # required — unique per merchant (e.g. your order id)
     title: str | None = None,
-    idempotency_key: str | None = None,
     return_url: str | None = None,
 ) -> Intent
 
@@ -98,7 +99,7 @@ RFC 7807 problem-details message:
 from qint import QintApiError
 
 try:
-    qint.create_intent(amount="10.00", currency="CHF")
+    qint.create_intent(amount="10.00", currency="CHF", idempotency_key="order-10")
 except QintApiError as e:
     print(e.status_code)  # e.g. 403
     print(e.detail)       # e.g. "This API key lacks the Write scope."
