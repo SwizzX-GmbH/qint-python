@@ -47,7 +47,7 @@ latest = qint.get_intent(intent.id)
 print(latest.status)  # IntentStatus.PENDING, .CONFIRMED, .SETTLED, ...
 ```
 
-The default base URL is `https://qint-api.fly.dev/api/v1`. Override it via the
+The default base URL is `https://api.qint.ch/api/v1`. Override it via the
 constructor (`QintClient(key, base_url="https://api.qint.ch/api/v1")`) once the
 `api.qint.ch` hostname is live.
 
@@ -57,7 +57,7 @@ constructor (`QintClient(key, base_url="https://api.qint.ch/api/v1")`) once the
 QintClient(
     api_key: str,
     *,
-    base_url: str = "https://qint-api.fly.dev/api/v1",
+    base_url: str = "https://api.qint.ch/api/v1",
     timeout: float = 30.0,
     transport: Transport | None = None,
 )

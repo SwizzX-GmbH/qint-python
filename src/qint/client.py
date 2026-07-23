@@ -12,7 +12,7 @@ from .errors import QintApiError
 from .http import HttpResponse, Transport, UrllibTransport
 from .models import Currency, Intent, IntentList, IntentStatus
 
-DEFAULT_BASE_URL = "https://qint-api.fly.dev/api/v1"
+DEFAULT_BASE_URL = "https://api.qint.ch/api/v1"
 DEFAULT_TIMEOUT = 30.0
 
 AmountLike = Union[int, float, str, Decimal]

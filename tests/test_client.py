@@ -74,7 +74,7 @@ def test_create_intent_shapes_request():
 
     call = t.last
     assert call["method"] == "POST"
-    assert call["url"] == "https://qint-api.fly.dev/api/v1/intents"
+    assert call["url"] == "https://api.qint.ch/api/v1/intents"
     assert call["headers"]["Authorization"] == "Bearer qk_live_test"
     assert call["headers"]["Content-Type"] == "application/json"
     assert call["headers"]["Accept"] == "application/json"
@@ -140,7 +140,7 @@ def test_get_intent_path_and_method():
     client.get_intent("pi_abc123")
 
     assert t.last["method"] == "GET"
-    assert t.last["url"] == "https://qint-api.fly.dev/api/v1/intents/pi_abc123"
+    assert t.last["url"] == "https://api.qint.ch/api/v1/intents/pi_abc123"
     assert t.last["body"] is None
 
 
@@ -154,7 +154,7 @@ def test_list_intents_query_params():
     result = client.list_intents(status=IntentStatus.SETTLED, page=2, page_size=25)
 
     url = t.last["url"]
-    assert url.startswith("https://qint-api.fly.dev/api/v1/intents?")
+    assert url.startswith("https://api.qint.ch/api/v1/intents?")
     assert "status=settled" in url
     assert "page=2" in url
     assert "pageSize=25" in url
@@ -173,7 +173,7 @@ def test_list_intents_without_params_has_no_query():
 
     client.list_intents()
 
-    assert t.last["url"] == "https://qint-api.fly.dev/api/v1/intents"
+    assert t.last["url"] == "https://api.qint.ch/api/v1/intents"
 
 
 def test_custom_base_url_is_respected():
