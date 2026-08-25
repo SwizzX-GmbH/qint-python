@@ -177,13 +177,14 @@ def test_list_intents_without_params_has_no_query():
 
 
 def test_custom_base_url_is_respected():
+    # A base DISTINCT from the default — this test is vacuous otherwise.
     t = FakeTransport(status=201, body=INTENT_JSON)
-    client = QintClient("qk_live_x", base_url="https://api.qint.ch/api/v1/", transport=t)
+    client = QintClient("qk_live_x", base_url="https://api.example.test/v1/", transport=t)
 
     client.create_intent(amount=10, currency="CHF", idempotency_key="order-10")
 
     # trailing slash normalised, no double slash
-    assert t.last["url"] == "https://api.qint.ch/api/v1/intents"
+    assert t.last["url"] == "https://api.example.test/v1/intents"
 
 
 def test_non_2xx_raises_typed_api_error_with_detail():
