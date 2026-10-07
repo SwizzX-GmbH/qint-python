@@ -7,6 +7,10 @@ All notable changes to this project are documented here. This project adheres to
 
 ### Changed
 
+- The distribution is now published as **`qint-sdk`** (`pip install qint-sdk`);
+  `qint` on PyPI belongs to an unrelated project. The import name is unchanged
+  (`from qint import QintClient`).
+
 - **Breaking:** `create_intent` now requires `idempotency_key` (keyword-only).
   The API rejects intent creation without an idempotency key (`400`); omitting
   the argument raises `TypeError`, and a blank key raises `ValueError` before

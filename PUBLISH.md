@@ -1,52 +1,35 @@
 # Publishing the Qint Python SDK to PyPI
 
-> ## ⛔ Blocked: the name `qint` is taken on PyPI
+> ## The distribution is `qint-sdk` (decision NEW-1, 2026-10-07)
 >
-> **Verified 2026-09-15.** <https://pypi.org/project/qint/> is **not ours**. It is
-> `qint` **0.2.0**, *"Quantized Integer type in Python!"*, published by **Neural
-> Dynamics** — an unrelated project.
+> `qint` on PyPI is **not ours**: <https://pypi.org/project/qint/> is `qint` 0.2.0,
+> *"Quantized Integer type in Python!"*, by Neural Dynamics. Never request
+> maintainer access to it and never upload to it.
 >
-> **Do not request maintainer access to it, and do not try to upload to it.** An
-> earlier version of this file said the prerequisite was being "maintainer of the
-> `qint` project on PyPI". That was wrong: it pointed at a stranger's package.
->
-> This is **not** a missing-token problem. The distribution has to be **renamed**
-> before anything can be published. `qint-sdk` and `qint-payments` were both
-> confirmed available on 2026-09-15.
->
-> **Blocked on decision NEW-1** — see `qint-api/docs/GO-LIVE.md`, blocker P1-3.
-> Until that decision is made, the release steps below cannot be run.
+> This SDK publishes as **`qint-sdk`** (`pyproject.toml` `[project].name`), chosen
+> and renamed on 2026-10-07; the name was free on 2026-09-15, 2026-09-24,
+> 2026-10-05 and 2026-10-07. The **import** name stays `qint`
+> (`from qint import QintClient`) — only the distribution name differs.
 
-Until then, the SDK installs from git:
+Until the first release lands on PyPI, the SDK installs from git:
 
 ```bash
 pip install "git+https://github.com/SwizzX-GmbH/qint-python.git@v0.1.0"
 ```
 
-The **import** name stays `qint` either way (`from qint import QintClient`) — only
-the distribution name on PyPI changes. Below, `<dist-name>` is whatever NEW-1
-settles on.
+## Before uploading — re-check the name
 
-## Once NEW-1 is decided — rename first
-
-Change the distribution name in every place it appears, in one commit:
-
-- `pyproject.toml` → `[project].name`
-- `README.md` → the `pip install` line
-- this file
-- any CI workflow that references the distribution
-
-Re-check availability immediately before uploading — an available name can be taken
-by anyone at any time:
+An available name can be taken by anyone at any time, so check immediately before
+the first upload:
 
 ```bash
-curl -s -o /dev/null -w '%{http_code}\n' https://pypi.org/pypi/<dist-name>/json
-# 404 = still free, 200 = taken, pick another
+curl -s -o /dev/null -w '%{http_code}\n' https://pypi.org/pypi/qint-sdk/json
+# 404 = still free, 200 = taken — stop and pick another name
 ```
 
 ## Prerequisites
 
-- A PyPI account that will **own the newly created** `<dist-name>` project. The
+- A PyPI account that will **own the newly created** `qint-sdk` project. The
   first upload creates the project and makes that account its owner.
 - A PyPI API token (scoped to the project after first upload), ideally as a
   `~/.pypirc` entry or exported per-shell.
@@ -72,7 +55,7 @@ Follow SemVer. Commit the bump.
 
 ```bash
 rm -rf dist build ./*.egg-info
-python -m build            # produces dist/<dist-name>-<version>.tar.gz and .whl
+python -m build            # produces dist/qint-sdk-<version>.tar.gz and .whl
 ```
 
 ## 3. Check the artifacts
@@ -96,7 +79,7 @@ there too.
 ```bash
 python -m twine upload --repository testpypi dist/*
 python -m pip install --index-url https://test.pypi.org/simple/ \
-  --extra-index-url https://pypi.org/simple/ <dist-name>
+  --extra-index-url https://pypi.org/simple/ qint-sdk
 ```
 
 Smoke-test in a throwaway venv:
@@ -122,7 +105,7 @@ TWINE_USERNAME=__token__ TWINE_PASSWORD=pypi-XXXX python -m twine upload dist/*
 ## 6. Verify
 
 ```bash
-pip install <dist-name>==<version>
+pip install qint-sdk==<version>
 python -c "from qint import QintClient; print(QintClient('qk_live_x').base_url)"
 ```
 

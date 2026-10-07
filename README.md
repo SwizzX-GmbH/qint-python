@@ -9,16 +9,21 @@ Full API reference: **https://docs.qint.ch**
 ## Install
 
 ```bash
+pip install qint-sdk
+```
+
+Until the first PyPI release is published, install from git:
+
+```bash
 pip install "git+https://github.com/SwizzX-GmbH/qint-python.git@v0.1.0"
 ```
 
 > **⚠️ Do not run `pip install qint`.** That installs a **different, unrelated
 > package** — `qint` on PyPI is *"Quantized Integer type in Python!"* by Neural
-> Dynamics, not this SDK. The name is taken, so this SDK will publish under a
-> different distribution name once that is decided; see
-> [`PUBLISH.md`](./PUBLISH.md). Install from git until then.
+> Dynamics, not this SDK. The distribution name of this SDK is **`qint-sdk`**;
+> see [`PUBLISH.md`](./PUBLISH.md).
 >
-> The **import** name is unaffected either way: `from qint import QintClient`.
+> The **import** name is `qint` regardless: `from qint import QintClient`.
 
 Requires Python 3.8+. No third-party runtime dependencies — the client is built
 on the standard library.
