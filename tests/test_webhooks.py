@@ -123,3 +123,35 @@ def test_construct_event_raises_on_bad_signature():
     body = raw()
     with pytest.raises(QintWebhookSignatureError):
         construct_event(body, sign(body, "whsec_wrong"), SECRET)
+
+
+def test_parse_event_maps_accepted_underpayment_fields():
+    body = {
+        **EVENT,
+        "currency": "GBP",
+        "amount": 100.00,
+        "underpaid": True,
+        "receivedAmount": 98.00,
+        "underpaidBps": 200,
+        "expectedCryptoAmount": "126.58227848",
+        "receivedCryptoAmount": "124.05063291",
+        "reversed": False,
+        "reversedAt": None,
+    }
+    event = parse_event(json.dumps(body).encode("utf-8"))
+    assert event.currency == "GBP"
+    assert event.underpaid is True
+    assert event.received_amount == Decimal("98.0")
+    assert event.underpaid_bps == 200
+    assert event.expected_crypto_amount == "126.58227848"
+    assert event.received_crypto_amount == "124.05063291"
+    assert event.reversed is False
+    assert event.reversed_at is None
+
+
+def test_parse_event_without_underpayment_fields_leaves_them_none():
+    event = parse_event(raw())
+    assert event.received_amount is None
+    assert event.underpaid_bps is None
+    assert event.reversed is None
+    assert event.reversed_at is None

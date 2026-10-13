@@ -5,6 +5,20 @@ All notable changes to this project are documented here. This project adheres to
 
 ## [Unreleased]
 
+### Added
+
+- `GBP` is a supported currency (`Currency.GBP`); intents accept CHF, EUR, USD
+  or GBP.
+- Optional `Intent` fields: `fee_amount`, `net_amount`, `settled_amount`,
+  `received_amount`, `underpaid_bps`, `credit_usdt`, `credit_rate`,
+  `reversed_at` (all `None` when absent).
+- Optional `PaymentStatusEvent` fields: `received_amount`, `underpaid_bps`,
+  `reversed`, `reversed_at`.
+- `QintApiError.code`, `.extensions`, and `.min_chf` / `.max_chf` /
+  `.amount_chf`, plus the `AMOUNT_OUT_OF_RANGE` and `RATE_UNAVAILABLE`
+  constants for the per-payment limit errors (`400 amount_out_of_range`,
+  `503 rate_unavailable`).
+
 ### Changed
 
 - The distribution is now published as **`qint-sdk`** (`pip install qint-sdk`);

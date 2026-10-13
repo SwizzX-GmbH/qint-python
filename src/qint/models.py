@@ -30,11 +30,12 @@ class IntentStatus(str, Enum):
 
 
 class Currency(str, Enum):
-    """Fiat currencies accepted when creating an intent."""
+    """Fiat currencies accepted when creating an intent: CHF, EUR, USD or GBP."""
 
     CHF = "CHF"
     EUR = "EUR"
     USD = "USD"
+    GBP = "GBP"
 
     def __str__(self) -> str:
         return self.value
@@ -58,6 +59,12 @@ def _to_decimal(value: Any) -> Optional[Decimal]:
     return Decimal(str(value))
 
 
+def _to_int(value: Any) -> Optional[int]:
+    if value is None:
+        return None
+    return int(value)
+
+
 @dataclass
 class Intent:
     """A payment intent as returned by the API.
@@ -65,6 +72,20 @@ class Intent:
     ``amount`` is a :class:`~decimal.Decimal` (parsed without float rounding).
     ``crypto_amount`` is left as the API's 8-decimal-place string. Timestamps
     are ISO-8601 strings exactly as sent by the server.
+
+    The fee, credit, underpayment and reversal fields are optional: each is
+    ``None`` when the response does not include it.
+
+    - ``fee_amount`` / ``net_amount``: Qint's fee and what the merchant is
+      credited once the payment settles, in ``currency``.
+    - ``settled_amount``: what the execution partner booked as realised.
+    - ``received_amount``: the fiat amount actually paid when the payment
+      settled short within the merchant's accepted underpayment.
+    - ``underpaid_bps``: how short, in basis points of the invoice.
+    - ``credit_usdt`` / ``credit_rate``: the USDT credited and the rate it was
+      booked at (fiat per 1 USDT).
+    - ``reversed_at``: set when the payment was reversed after settlement; the
+      status stays ``settled`` but treat it as not paid.
     """
 
     id: str
@@ -81,6 +102,14 @@ class Intent:
     return_url: Optional[str] = None
     confirmed_at: Optional[str] = None
     settled_at: Optional[str] = None
+    reversed_at: Optional[str] = None
+    fee_amount: Optional[Decimal] = None
+    net_amount: Optional[Decimal] = None
+    settled_amount: Optional[Decimal] = None
+    received_amount: Optional[Decimal] = None
+    underpaid_bps: Optional[int] = None
+    credit_usdt: Optional[Decimal] = None
+    credit_rate: Optional[Decimal] = None
     #: The untouched JSON object the server returned, for forward compatibility.
     raw: Dict[str, Any] = field(default_factory=dict, repr=False)
 
@@ -101,6 +130,14 @@ class Intent:
             return_url=data.get("returnUrl"),
             confirmed_at=data.get("confirmedAt"),
             settled_at=data.get("settledAt"),
+            reversed_at=data.get("reversedAt"),
+            fee_amount=_to_decimal(data.get("feeAmount")),
+            net_amount=_to_decimal(data.get("netAmount")),
+            settled_amount=_to_decimal(data.get("settledAmount")),
+            received_amount=_to_decimal(data.get("receivedAmount")),
+            underpaid_bps=_to_int(data.get("underpaidBps")),
+            credit_usdt=_to_decimal(data.get("creditUsdt")),
+            credit_rate=_to_decimal(data.get("creditRate")),
             raw=data,
         )
 
@@ -134,7 +171,15 @@ class IntentList:
 
 @dataclass
 class PaymentStatusEvent:
-    """A ``payment.status`` webhook event payload."""
+    """A ``payment.status`` webhook event payload.
+
+    ``received_amount`` (fiat actually paid, in ``currency``) and
+    ``underpaid_bps`` (how short, in basis points of the invoice) are set when
+    the payment settled short within the merchant's accepted underpayment, and
+    ``None`` otherwise. ``expected_crypto_amount`` / ``received_crypto_amount``
+    are 8-decimal-place strings. ``reversed`` / ``reversed_at`` flag a payment
+    reversed after settlement.
+    """
 
     type: str
     intent_id: str
@@ -148,6 +193,10 @@ class PaymentStatusEvent:
     underpaid: Optional[bool] = None
     expected_crypto_amount: Optional[str] = None
     received_crypto_amount: Optional[str] = None
+    received_amount: Optional[Decimal] = None
+    underpaid_bps: Optional[int] = None
+    reversed: Optional[bool] = None
+    reversed_at: Optional[str] = None
     raw: Dict[str, Any] = field(default_factory=dict, repr=False)
 
     @classmethod
@@ -165,5 +214,9 @@ class PaymentStatusEvent:
             underpaid=data.get("underpaid"),
             expected_crypto_amount=data.get("expectedCryptoAmount"),
             received_crypto_amount=data.get("receivedCryptoAmount"),
+            received_amount=_to_decimal(data.get("receivedAmount")),
+            underpaid_bps=_to_int(data.get("underpaidBps")),
+            reversed=data.get("reversed"),
+            reversed_at=data.get("reversedAt"),
             raw=data,
         )

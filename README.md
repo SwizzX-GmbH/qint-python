@@ -69,7 +69,7 @@ QintClient(
 
 client.create_intent(
     amount,                       # int | float | str | Decimal (major units)
-    currency,                     # "CHF" | "EUR" | "USD" or qint.Currency
+    currency,                     # "CHF" | "EUR" | "USD" | "GBP" or qint.Currency
     *,
     idempotency_key: str,         # required — unique per merchant (e.g. your order id)
     title: str | None = None,
@@ -89,16 +89,19 @@ client.list_intents(
 `Intent` fields: `id`, `status` (an `IntentStatus`), `amount` (a `Decimal`,
 parsed without float rounding), `currency`, `title`, `asset_symbol`,
 `crypto_amount` (8-dp string), `deposit_address`, `checkout_url`, `return_url`,
-`created_at`, `expires_at`, `confirmed_at`, `settled_at`, plus `raw` (the
-untouched JSON).
+`created_at`, `expires_at`, `confirmed_at`, `settled_at`, plus the optional
+`reversed_at`, `fee_amount`, `net_amount`, `settled_amount`, `received_amount`,
+`underpaid_bps`, `credit_usdt` and `credit_rate` (each `None` when the response
+does not include it), plus `raw` (the untouched JSON).
 
 Statuses: `initiated`, `pending`, `confirmed`, `settled`, `failed`, `expired`,
 `cancelled`.
 
 ## Errors
 
-Any non-2xx response raises `QintApiError`, which carries the HTTP status and the
-RFC 7807 problem-details message:
+Any non-2xx response raises `QintApiError`, which carries the HTTP status, the
+RFC 7807 problem-details message and, when the API sends one, a machine-readable
+`code`:
 
 ```python
 from qint import QintApiError
@@ -108,8 +111,30 @@ try:
 except QintApiError as e:
     print(e.status_code)  # e.g. 403
     print(e.detail)       # e.g. "This API key lacks the Write scope."
+    print(e.code)         # e.g. "amount_out_of_range", or None
     print(e.problem)      # full problem+json dict
 ```
+
+### Payment limits
+
+Each payment must be between CHF 10 and CHF 100'000 (or the equivalent in EUR,
+USD or GBP). Outside that range `create_intent` raises a `400` with
+`e.code == qint.AMOUNT_OUT_OF_RANGE` (`"amount_out_of_range"`) and the numbers
+on `e.min_chf`, `e.max_chf` and `e.amount_chf` (`Decimal`). If no exchange rate
+is available to judge a non-CHF amount it raises a `503` with
+`e.code == qint.RATE_UNAVAILABLE` (`"rate_unavailable"`) — retry in a minute.
+Every non-standard problem member is also in `e.extensions`.
+
+### Underpaid payments
+
+A payment that comes up short but within your accepted underpayment still
+settles. The `payment.status` webhook then carries `underpaid=True`,
+`received_amount` (the fiat amount actually paid, in the intent's currency) and
+`underpaid_bps` (how short, in basis points of the invoice); both are `None`
+otherwise. `Intent` declares the same two fields plus the fee, credit and
+reversal fields listed above. A non-`None` `reversed_at` means the payment was
+reversed after settlement: treat it as not paid even though its status stays
+`settled`.
 
 Network-level failures (DNS/TLS/timeout) raise `QintConnectionError`. Both derive
 from `QintError`.

@@ -5,7 +5,16 @@ from decimal import Decimal
 
 import pytest
 
-from qint import Currency, Intent, IntentList, IntentStatus, QintApiError, QintClient
+from qint import (
+    AMOUNT_OUT_OF_RANGE,
+    RATE_UNAVAILABLE,
+    Currency,
+    Intent,
+    IntentList,
+    IntentStatus,
+    QintApiError,
+    QintClient,
+)
 from qint.http import HttpResponse
 
 
@@ -216,3 +225,121 @@ def test_bool_amount_rejected():
     client = make_client(FakeTransport(status=201, body=INTENT_JSON))
     with pytest.raises(TypeError):
         client.create_intent(amount=True, currency="CHF", idempotency_key="order-x")
+
+
+def test_gbp_is_a_supported_currency():
+    assert [c.value for c in Currency] == ["CHF", "EUR", "USD", "GBP"]
+    t = FakeTransport(status=201, body={**INTENT_JSON, "currency": "GBP"})
+    client = make_client(t)
+
+    intent = client.create_intent(amount="25.00", currency=Currency.GBP, idempotency_key="order-gbp")
+
+    assert t.last["body"]["currency"] == "GBP"
+    assert intent.currency == "GBP"
+
+
+def test_intent_parses_fee_underpayment_and_reversal_fields():
+    body = {
+        **INTENT_JSON,
+        "status": "settled",
+        "amount": 100.00,
+        "settledAt": "2026-07-08T10:20:00Z",
+        "feeAmount": 0.98,
+        "netAmount": 97.02,
+        "settledAmount": None,
+        "receivedAmount": 98.00,
+        "underpaidBps": 200,
+        "creditUsdt": 108.9,
+        "creditRate": 0.8909,
+        "reversedAt": "2026-07-09T09:00:00Z",
+    }
+    client = make_client(FakeTransport(status=200, body=body))
+
+    intent = client.get_intent("pi_abc123")
+
+    assert intent.fee_amount == Decimal("0.98")
+    assert intent.net_amount == Decimal("97.02")
+    assert intent.settled_amount is None
+    assert intent.received_amount == Decimal("98.00")
+    assert intent.underpaid_bps == 200
+    assert intent.credit_usdt == Decimal("108.9")
+    assert intent.credit_rate == Decimal("0.8909")
+    assert intent.reversed_at == "2026-07-09T09:00:00Z"
+
+
+def test_intent_without_new_fields_leaves_them_none():
+    client = make_client(FakeTransport(status=200, body=INTENT_JSON))
+
+    intent = client.get_intent("pi_abc123")
+
+    assert intent.fee_amount is None
+    assert intent.net_amount is None
+    assert intent.settled_amount is None
+    assert intent.received_amount is None
+    assert intent.underpaid_bps is None
+    assert intent.credit_usdt is None
+    assert intent.credit_rate is None
+    assert intent.reversed_at is None
+
+
+def test_amount_out_of_range_exposes_code_and_limits():
+    problem = {
+        "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+        "title": "Amount out of range",
+        "status": 400,
+        "detail": "Payments must be between CHF 10 and CHF 100'000 (or the equivalent). This amount is CHF 5.00.",
+        "traceId": "00-abc-def-00",
+        "code": "amount_out_of_range",
+        "minChf": 10,
+        "maxChf": 100000,
+        "amountChf": 5.00,
+    }
+    client = make_client(FakeTransport(status=400, body=problem))
+
+    with pytest.raises(QintApiError) as excinfo:
+        client.create_intent(amount="5.00", currency="CHF", idempotency_key="order-5")
+
+    err = excinfo.value
+    assert err.status_code == 400
+    assert err.code == AMOUNT_OUT_OF_RANGE == "amount_out_of_range"
+    assert err.min_chf == Decimal("10")
+    assert err.max_chf == Decimal("100000")
+    assert err.amount_chf == Decimal("5")
+    assert err.extensions == {
+        "traceId": "00-abc-def-00",
+        "code": "amount_out_of_range",
+        "minChf": 10,
+        "maxChf": 100000,
+        "amountChf": 5.00,
+    }
+    assert err.detail == (
+        "Payments must be between CHF 10 and CHF 100'000 (or the equivalent). This amount is CHF 5.00."
+    )
+
+
+def test_rate_unavailable_exposes_code():
+    problem = {
+        "title": "Exchange rate unavailable",
+        "status": 503,
+        "detail": "Exchange rate unavailable — try again in a minute.",
+        "code": "rate_unavailable",
+    }
+    client = make_client(FakeTransport(status=503, body=problem))
+
+    with pytest.raises(QintApiError) as excinfo:
+        client.create_intent(amount="50.00", currency="GBP", idempotency_key="order-50")
+
+    err = excinfo.value
+    assert err.status_code == 503
+    assert err.code == RATE_UNAVAILABLE
+    assert err.min_chf is None
+
+
+def test_api_error_without_code_has_none():
+    client = make_client(FakeTransport(status=404, body={"title": "Not Found", "status": 404}))
+
+    with pytest.raises(QintApiError) as excinfo:
+        client.get_intent("pi_missing")
+
+    assert excinfo.value.code is None
+    assert excinfo.value.extensions == {}

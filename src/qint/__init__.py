@@ -14,6 +14,8 @@ See https://docs.qint.ch for the full API reference.
 from ._version import __version__
 from .client import DEFAULT_BASE_URL, QintClient
 from .errors import (
+    AMOUNT_OUT_OF_RANGE,
+    RATE_UNAVAILABLE,
     QintApiError,
     QintConnectionError,
     QintError,
@@ -44,6 +46,8 @@ __all__ = [
     "QintApiError",
     "QintConnectionError",
     "QintWebhookSignatureError",
+    "AMOUNT_OUT_OF_RANGE",
+    "RATE_UNAVAILABLE",
     "Transport",
     "UrllibTransport",
     "HttpResponse",
