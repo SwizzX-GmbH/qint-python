@@ -9,8 +9,16 @@ from typing import Any, Dict, Optional
 AMOUNT_OUT_OF_RANGE = "amount_out_of_range"
 #: No exchange rate was available to judge the limits (HTTP 503 on create).
 RATE_UNAVAILABLE = "rate_unavailable"
+#: A crypto payout was requested in an asset other than the merchant's
+#: settlement asset (HTTP 400). Returned by the dashboard API's payout
+#: endpoints, not by the merchant API — listed for completeness.
+SETTLEMENT_ASSET_MISMATCH = "settlement_asset_mismatch"
 
 _STANDARD_PROBLEM_MEMBERS = frozenset({"type", "title", "status", "detail", "instance"})
+
+# A currency Qint has switched off is refused with a plain 400 (no ``code``);
+# see :attr:`QintApiError.is_currency_disabled`.
+_CURRENCY_DISABLED_MARKER = "is currently disabled on qint"
 
 
 def _decimal_or_none(value: Any) -> Optional[Decimal]:
@@ -42,6 +50,11 @@ class QintApiError(QintError):
     serialises problem extensions flat at the top level; ``extensions`` holds
     every member beyond the standard RFC 7807 ones, and ``min_chf`` /
     ``max_chf`` / ``amount_chf`` expose the limit numbers as ``Decimal``.
+    ``trace_id`` is the request correlation id — quote it to Qint support.
+
+    Creating an intent in a currency Qint has currently switched off fails with
+    a plain ``400`` (no ``code``) whose ``detail`` names the currency and the
+    ones that are enabled; check :meth:`QintClient.list_currencies` first.
     """
 
     def __init__(
@@ -62,6 +75,8 @@ class QintApiError(QintError):
         self.body = body
         code = self.problem.get("code")
         self.code: Optional[str] = code if isinstance(code, str) else None
+        trace_id = self.problem.get("traceId")
+        self.trace_id: Optional[str] = trace_id if isinstance(trace_id, str) else None
         message = detail or title or body or f"HTTP {status_code}"
         super().__init__(f"[{status_code}] {message}")
 
@@ -69,6 +84,15 @@ class QintApiError(QintError):
     def extensions(self) -> Dict[str, Any]:
         """Problem members beyond ``type``/``title``/``status``/``detail``/``instance``."""
         return {k: v for k, v in self.problem.items() if k not in _STANDARD_PROBLEM_MEMBERS}
+
+    @property
+    def is_currency_disabled(self) -> bool:
+        """``True`` for the 400 a switched-off currency produces (matched on ``detail``)."""
+        return (
+            self.status_code == 400
+            and isinstance(self.detail, str)
+            and _CURRENCY_DISABLED_MARKER in self.detail.lower()
+        )
 
     @property
     def min_chf(self) -> Optional[Decimal]:

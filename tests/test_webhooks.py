@@ -8,7 +8,10 @@ from decimal import Decimal
 import pytest
 
 from qint import (
+    PAYMENT_STATUS_EVENT,
+    PING_EVENT,
     PaymentStatusEvent,
+    PingEvent,
     QintWebhookSignatureError,
     compute_signature,
     construct_event,
@@ -155,3 +158,31 @@ def test_parse_event_without_underpayment_fields_leaves_them_none():
     assert event.underpaid_bps is None
     assert event.reversed is None
     assert event.reversed_at is None
+
+
+def test_parse_event_ping():
+    body = json.dumps(
+        {
+            "type": "ping",
+            "endpointId": "3f2b8c1e-0000-4000-8000-000000000001",
+            "sentAt": "2026-10-14T12:00:00+00:00",
+        }
+    ).encode("utf-8")
+    event = construct_event(body, sign(body), SECRET)
+    assert isinstance(event, PingEvent)
+    assert event.type == PING_EVENT
+    assert event.endpoint_id == "3f2b8c1e-0000-4000-8000-000000000001"
+    assert event.sent_at == "2026-10-14T12:00:00+00:00"
+
+
+def test_parse_event_unknown_type_is_tolerated():
+    body = json.dumps({"type": "payout.status", "payoutId": "po_1", "x": [1]}).encode()
+    event = parse_event(body)
+    assert isinstance(event, PaymentStatusEvent)
+    assert event.type == "payout.status"
+    assert event.raw["payoutId"] == "po_1"
+
+
+def test_payment_status_event_constant():
+    assert PAYMENT_STATUS_EVENT == "payment.status"
+    assert parse_event(raw()).type == PAYMENT_STATUS_EVENT

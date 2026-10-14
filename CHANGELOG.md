@@ -5,8 +5,25 @@ All notable changes to this project are documented here. This project adheres to
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-14
+
 ### Added
 
+- `QintClient.list_currencies()` → `CurrencyList` for the public
+  `GET /api/v1/public/currencies`: every fiat currency with its `enabled` flag,
+  plus `enabled_codes` and `is_enabled(code)`. Sent without the API key. Use it
+  to hide currencies Qint has switched off; cache it for ~30 s.
+- `SettlementAsset` enum (`USDT`, `USDC`) and `Intent.credit_asset` — the
+  stablecoin the credit was booked in (USDC for merchants registered in the EU,
+  USDT otherwise). Unknown values parse as plain strings.
+- `Intent.reversed` and `Intent.underpaid` boolean flags (default `False`).
+- `PingEvent` for the dashboard's `ping` test webhook (`endpoint_id`,
+  `sent_at`); `PAYMENT_STATUS_EVENT` / `PING_EVENT` constants and the
+  `WebhookEvent` union type.
+- `SETTLEMENT_ASSET_MISMATCH` error-code constant (returned by the dashboard
+  API's payout endpoints; listed for completeness).
+- `QintApiError.trace_id` and `QintApiError.is_currency_disabled` (the plain
+  `400` returned for a currency Qint has switched off).
 - `GBP` is a supported currency (`Currency.GBP`); intents accept CHF, EUR, USD
   or GBP.
 - Optional `Intent` fields: `fee_amount`, `net_amount`, `settled_amount`,
@@ -21,7 +38,14 @@ All notable changes to this project are documented here. This project adheres to
 
 ### Changed
 
-- The distribution is now published as **`qint-sdk`** (`pip install qint-sdk`);
+- `parse_event` / `construct_event` return a `PingEvent` for `type == "ping"`
+  (previously a mostly-empty `PaymentStatusEvent`). Other unknown event types
+  still parse as `PaymentStatusEvent` with the original JSON on `raw`.
+- `Intent.credit_usdt` / `credit_rate` are documented as the amount and rate in
+  `credit_asset` (the field name predates USDC). `fee_amount` / `net_amount`
+  are `None` until the payment is settled.
+- The distribution is named **`qint-sdk`** (`pip install qint-sdk` once it is
+  on PyPI; not uploaded yet);
   `qint` on PyPI belongs to an unrelated project. The import name is unchanged
   (`from qint import QintClient`).
 

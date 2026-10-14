@@ -17,10 +17,18 @@ import json
 from typing import Union
 
 from .errors import QintWebhookSignatureError
-from .models import PaymentStatusEvent
+from .models import PaymentStatusEvent, PingEvent
 
 SIGNATURE_HEADER = "X-Qint-Signature"
 EVENT_ID_HEADER = "X-Qint-Event-Id"
+
+#: Event type sent on every payment-intent status transition (and flag flip).
+PAYMENT_STATUS_EVENT = "payment.status"
+#: Event type of the dashboard's "Send test event" delivery.
+PING_EVENT = "ping"
+
+#: What :func:`parse_event` / :func:`construct_event` return.
+WebhookEvent = Union[PaymentStatusEvent, PingEvent]
 
 _SCHEME = "sha256"
 
@@ -64,13 +72,21 @@ def verify_webhook_signature(
     return hmac.compare_digest(expected.lower(), provided.lower())
 
 
-def parse_event(raw_body: Union[str, bytes, bytearray]) -> PaymentStatusEvent:
-    """Parse a raw webhook body into a :class:`PaymentStatusEvent`.
+def parse_event(raw_body: Union[str, bytes, bytearray]) -> WebhookEvent:
+    """Parse a raw webhook body into an event.
+
+    Returns a :class:`PingEvent` for ``type == "ping"`` and a
+    :class:`PaymentStatusEvent` otherwise. Event types this SDK does not know
+    yet also come back as a :class:`PaymentStatusEvent` (with the original JSON
+    on ``raw``) — check ``event.type`` and ignore types you don't handle,
+    still answering 2xx.
 
     This does NOT verify the signature — call :func:`verify_webhook_signature`
     first (or use :func:`construct_event`).
     """
     data = json.loads(_as_bytes(raw_body).decode("utf-8"))
+    if isinstance(data, dict) and data.get("type") == PING_EVENT:
+        return PingEvent.from_dict(data)
     return PaymentStatusEvent.from_dict(data)
 
 
@@ -78,7 +94,7 @@ def construct_event(
     raw_body: Union[str, bytes, bytearray],
     signature_header: str,
     secret: str,
-) -> PaymentStatusEvent:
+) -> WebhookEvent:
     """Verify the signature and return the parsed event, or raise.
 
     Raises:
