@@ -10,7 +10,7 @@ from urllib.parse import quote, urlencode
 from ._version import __version__
 from .errors import QintApiError
 from .http import HttpResponse, Transport, UrllibTransport
-from .models import Currency, Intent, IntentList, IntentStatus
+from .models import Currency, CurrencyList, Intent, IntentList, IntentStatus
 
 DEFAULT_BASE_URL = "https://api.qint.ch/api/v1"
 DEFAULT_TIMEOUT = 30.0
@@ -128,17 +128,35 @@ class QintClient:
         resp = self._request("GET", path)
         return IntentList.from_dict(self._json(resp))
 
+    def list_currencies(self) -> CurrencyList:
+        """Every fiat currency Qint knows, with whether it is offered right now.
+
+        ``GET /public/currencies`` — public, sent without the API key. Qint can
+        switch a currency off at any time; while it is off, creating an intent
+        in it fails with ``400``. Use the result to hide disabled currencies
+        (``currencies.enabled_codes`` / ``currencies.is_enabled("GBP")``) and
+        cache it for about 30 seconds rather than calling it on every checkout.
+        """
+        resp = self._request("GET", "/public/currencies", auth=False)
+        return CurrencyList.from_dict(self._json(resp))
+
     # -- internals ----------------------------------------------------------
 
     def _request(
-        self, method: str, path: str, *, body: Optional[Dict[str, Any]] = None
+        self,
+        method: str,
+        path: str,
+        *,
+        body: Optional[Dict[str, Any]] = None,
+        auth: bool = True,
     ) -> HttpResponse:
         url = f"{self.base_url}{path}"
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
             "Accept": "application/json",
             "User-Agent": f"qint-python/{__version__}",
         }
+        if auth:
+            headers["Authorization"] = f"Bearer {self.api_key}"
         data: Optional[bytes] = None
         if body is not None:
             data = json.dumps(body, separators=(",", ":")).encode("utf-8")

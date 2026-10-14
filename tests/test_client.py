@@ -8,7 +8,11 @@ import pytest
 from qint import (
     AMOUNT_OUT_OF_RANGE,
     RATE_UNAVAILABLE,
+    SETTLEMENT_ASSET_MISMATCH,
     Currency,
+    CurrencyList,
+    SettlementAsset,
+    __version__,
     Intent,
     IntentList,
     IntentStatus,
@@ -343,3 +347,158 @@ def test_api_error_without_code_has_none():
 
     assert excinfo.value.code is None
     assert excinfo.value.extensions == {}
+
+
+# -- 2026-10-14 API sync: currencies, settlement asset, flags, codes --------
+
+
+def test_list_currencies_is_public_get_and_parses():
+    t = FakeTransport(
+        status=200,
+        body={
+            "currencies": [
+                {"code": "CHF", "enabled": True},
+                {"code": "EUR", "enabled": True},
+                {"code": "USD", "enabled": True},
+                {"code": "GBP", "enabled": False},
+                {"code": "JPY", "enabled": True, "futureField": 1},
+            ]
+        },
+    )
+    client = make_client(t)
+
+    currencies = client.list_currencies()
+
+    assert t.last["method"] == "GET"
+    assert t.last["url"] == "https://api.qint.ch/api/v1/public/currencies"
+    assert "Authorization" not in t.last["headers"]
+    assert t.last["body"] is None
+    assert isinstance(currencies, CurrencyList)
+    assert len(currencies) == 5
+    assert currencies.enabled_codes == ["CHF", "EUR", "USD", "JPY"]
+    assert currencies.is_enabled("chf")
+    assert currencies.is_enabled(Currency.EUR)
+    assert not currencies.is_enabled(Currency.GBP)
+    assert not currencies.is_enabled("XYZ")
+    assert [c.code for c in currencies] == ["CHF", "EUR", "USD", "GBP", "JPY"]
+
+
+def test_list_currencies_empty_body_is_empty_list():
+    client = make_client(FakeTransport(status=200, body={}))
+    assert client.list_currencies().enabled_codes == []
+
+
+def test_intent_parses_credit_asset_and_flags():
+    data = dict(
+        INTENT_JSON,
+        status="settled",
+        reversed=False,
+        underpaid=True,
+        feeAmount=0.25,
+        netAmount=49.65,
+        creditUsdt=55.123456,
+        creditRate=0.9007,
+        creditAsset="USDC",
+    )
+    intent = Intent.from_dict(data)
+    assert intent.credit_asset is SettlementAsset.USDC
+    assert intent.credit_usdt == Decimal("55.123456")
+    assert intent.underpaid is True
+    assert intent.reversed is False
+    assert intent.fee_amount == Decimal("0.25")
+    assert intent.net_amount == Decimal("49.65")
+
+
+def test_intent_unknown_credit_asset_and_unknown_fields_tolerated():
+    intent = Intent.from_dict(dict(INTENT_JSON, creditAsset="EURC", brandNew={"x": 1}))
+    assert intent.credit_asset == "EURC"
+    assert intent.raw["brandNew"] == {"x": 1}
+
+
+def test_intent_null_fee_and_credit_until_settled():
+    data = dict(
+        INTENT_JSON,
+        reversed=False,
+        underpaid=False,
+        feeAmount=None,
+        netAmount=None,
+        creditUsdt=None,
+        creditRate=None,
+        creditAsset=None,
+    )
+    intent = Intent.from_dict(data)
+    assert intent.fee_amount is None
+    assert intent.net_amount is None
+    assert intent.credit_asset is None
+    assert intent.reversed is False
+    assert intent.underpaid is False
+
+
+def test_intent_reversed_flag_and_defaults():
+    reversed_intent = Intent.from_dict(
+        dict(INTENT_JSON, status="settled", reversed=True, reversedAt="2026-07-08T11:00:00Z")
+    )
+    assert reversed_intent.reversed is True
+    # older payloads without the flag: derived from reversedAt, else False
+    legacy = Intent.from_dict(dict(INTENT_JSON, reversedAt="2026-07-08T11:00:00Z"))
+    assert legacy.reversed is True
+    plain = Intent.from_dict(INTENT_JSON)
+    assert plain.reversed is False and plain.underpaid is False
+
+
+def test_settlement_asset_values():
+    assert [a.value for a in SettlementAsset] == ["USDT", "USDC"]
+    assert str(SettlementAsset.USDC) == "USDC"
+
+
+def test_disabled_currency_surfaces_400_and_detail():
+    detail = "GBP is currently disabled on Qint. currency must be one of: CHF, EUR, USD."
+    problem = {
+        "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+        "title": "An error occurred while processing your request.",
+        "status": 400,
+        "detail": detail,
+        "traceId": "00-abc-def-00",
+    }
+    client = make_client(FakeTransport(status=400, body=problem))
+
+    with pytest.raises(QintApiError) as excinfo:
+        client.create_intent(amount=50, currency=Currency.GBP, idempotency_key="order-gbp")
+
+    err = excinfo.value
+    assert err.status_code == 400
+    assert err.detail == detail
+    assert err.code is None
+    assert err.is_currency_disabled is True
+    assert err.trace_id == "00-abc-def-00"
+    assert detail in str(err)
+
+
+def test_other_400_is_not_currency_disabled():
+    problem = {"status": 400, "detail": "currency must be one of: CHF, EUR, USD, GBP."}
+    client = make_client(FakeTransport(status=400, body=problem))
+    with pytest.raises(QintApiError) as excinfo:
+        client.create_intent(amount=50, currency="JPY", idempotency_key="order-jpy")
+    assert excinfo.value.is_currency_disabled is False
+    assert excinfo.value.trace_id is None
+
+
+def test_settlement_asset_mismatch_code_constant():
+    assert SETTLEMENT_ASSET_MISMATCH == "settlement_asset_mismatch"
+    problem = {
+        "title": "Wrong payout asset",
+        "status": 400,
+        "detail": "Crypto payouts must be in your settlement asset (USDC).",
+        "code": "settlement_asset_mismatch",
+    }
+    client = make_client(FakeTransport(status=400, body=problem))
+    with pytest.raises(QintApiError) as excinfo:
+        client.get_intent("pi_x")
+    assert excinfo.value.code == SETTLEMENT_ASSET_MISMATCH
+
+
+def test_user_agent_carries_version():
+    t = FakeTransport(status=200, body=INTENT_JSON)
+    make_client(t).get_intent("pi_abc123")
+    assert t.last["headers"]["User-Agent"] == f"qint-python/{__version__}"
+    assert __version__ == "0.2.0"

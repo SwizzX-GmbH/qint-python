@@ -41,6 +41,30 @@ class Currency(str, Enum):
         return self.value
 
 
+class SettlementAsset(str, Enum):
+    """The stablecoin a merchant's balance is held in.
+
+    Merchants registered in the European Union settle in ``USDC`` (USDT is not
+    authorised under MiCA); all other merchants settle in ``USDT``.
+    """
+
+    USDT = "USDT"
+    USDC = "USDC"
+
+    def __str__(self) -> str:
+        return self.value
+
+
+def _to_settlement_asset(value: Any) -> Optional[Union[SettlementAsset, str]]:
+    """Coerce a wire settlement asset, tolerating unknown values."""
+    if value is None:
+        return None
+    try:
+        return SettlementAsset(value)
+    except ValueError:
+        return str(value)
+
+
 def _to_status(value: Any) -> Union[IntentStatus, str]:
     """Coerce a wire status to :class:`IntentStatus`, tolerating unknown values."""
     if value is None:
@@ -77,15 +101,22 @@ class Intent:
     ``None`` when the response does not include it.
 
     - ``fee_amount`` / ``net_amount``: Qint's fee and what the merchant is
-      credited once the payment settles, in ``currency``.
+      credited, in ``currency`` — ``None`` until the payment is settled.
     - ``settled_amount``: what the execution partner booked as realised.
     - ``received_amount``: the fiat amount actually paid when the payment
       settled short within the merchant's accepted underpayment.
     - ``underpaid_bps``: how short, in basis points of the invoice.
-    - ``credit_usdt`` / ``credit_rate``: the USDT credited and the rate it was
-      booked at (fiat per 1 USDT).
-    - ``reversed_at``: set when the payment was reversed after settlement; the
-      status stays ``settled`` but treat it as not paid.
+    - ``credit_usdt`` / ``credit_rate``: the amount credited to the balance
+      and the rate it was booked at (``currency`` units per 1 unit of
+      ``credit_asset``). The name ``credit_usdt`` predates USDC: for a merchant
+      settling in USDC the amount is USDC.
+    - ``credit_asset``: the stablecoin the credit was booked in
+      (:class:`SettlementAsset` — ``USDC`` for merchants registered in the EU,
+      ``USDT`` otherwise); ``None`` until credited.
+    - ``reversed`` / ``reversed_at``: set when the payment was reversed after
+      settlement; the status stays ``settled`` but treat it as not paid.
+    - ``underpaid``: the buyer sent less than the quoted crypto amount (a flag,
+      not a status).
     """
 
     id: str
@@ -110,6 +141,9 @@ class Intent:
     underpaid_bps: Optional[int] = None
     credit_usdt: Optional[Decimal] = None
     credit_rate: Optional[Decimal] = None
+    credit_asset: Optional[Union[SettlementAsset, str]] = None
+    reversed: bool = False
+    underpaid: bool = False
     #: The untouched JSON object the server returned, for forward compatibility.
     raw: Dict[str, Any] = field(default_factory=dict, repr=False)
 
@@ -138,6 +172,9 @@ class Intent:
             underpaid_bps=_to_int(data.get("underpaidBps")),
             credit_usdt=_to_decimal(data.get("creditUsdt")),
             credit_rate=_to_decimal(data.get("creditRate")),
+            credit_asset=_to_settlement_asset(data.get("creditAsset")),
+            reversed=bool(data.get("reversed") or data.get("reversedAt")),
+            underpaid=bool(data.get("underpaid", False)),
             raw=data,
         )
 
@@ -218,5 +255,75 @@ class PaymentStatusEvent:
             underpaid_bps=_to_int(data.get("underpaidBps")),
             reversed=data.get("reversed"),
             reversed_at=data.get("reversedAt"),
+            raw=data,
+        )
+
+
+@dataclass
+class CurrencyAvailability:
+    """One fiat currency and whether Qint offers it for new payments right now.
+
+    ``code`` stays a plain string so currencies added later still parse.
+    """
+
+    code: str
+    enabled: bool
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "CurrencyAvailability":
+        return cls(code=str(data.get("code", "")), enabled=bool(data.get("enabled", False)))
+
+
+@dataclass
+class CurrencyList:
+    """``GET /public/currencies`` — every fiat currency, in display order.
+
+    Qint can switch a currency off (and back on) at any time; while it is off,
+    creating an intent in it is refused with ``400``. Use :attr:`enabled_codes`
+    to hide disabled currencies. The response is cacheable for 30 seconds.
+    """
+
+    currencies: List[CurrencyAvailability]
+    raw: Dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "CurrencyList":
+        return cls(
+            currencies=[CurrencyAvailability.from_dict(c) for c in data.get("currencies", [])],
+            raw=data,
+        )
+
+    @property
+    def enabled_codes(self) -> List[str]:
+        """The codes currently offered for new payments, in display order."""
+        return [c.code for c in self.currencies if c.enabled]
+
+    def is_enabled(self, code: Union["Currency", str]) -> bool:
+        """Whether ``code`` (case-insensitive) is offered for new payments."""
+        wanted = str(code).strip().upper()
+        return any(c.enabled and c.code.upper() == wanted for c in self.currencies)
+
+    def __iter__(self):
+        return iter(self.currencies)
+
+    def __len__(self) -> int:
+        return len(self.currencies)
+
+
+@dataclass
+class PingEvent:
+    """The ``ping`` test event (dashboard "Send test event"). Verify, return 2xx, ignore."""
+
+    type: str
+    endpoint_id: str = ""
+    sent_at: str = ""
+    raw: Dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "PingEvent":
+        return cls(
+            type=data.get("type", "ping"),
+            endpoint_id=str(data.get("endpointId") or ""),
+            sent_at=str(data.get("sentAt") or ""),
             raw=data,
         )

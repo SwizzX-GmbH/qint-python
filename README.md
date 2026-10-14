@@ -15,7 +15,7 @@ pip install qint-sdk
 Until the first PyPI release is published, install from git:
 
 ```bash
-pip install "git+https://github.com/SwizzX-GmbH/qint-python.git@v0.1.0"
+pip install "git+https://github.com/SwizzX-GmbH/qint-python.git@v0.2.0"
 ```
 
 > **⚠️ Do not run `pip install qint`.** That installs a **different, unrelated
@@ -52,9 +52,8 @@ latest = qint.get_intent(intent.id)
 print(latest.status)  # IntentStatus.PENDING, .CONFIRMED, .SETTLED, ...
 ```
 
-The default base URL is `https://api.qint.ch/api/v1`. Override it via the
-constructor (`QintClient(key, base_url="https://api.qint.ch/api/v1")`) once the
-`api.qint.ch` hostname is live.
+The default base URL is `https://api.qint.ch/api/v1`; override it via the
+constructor (`QintClient(key, base_url=...)`) if you need to.
 
 ## Client API
 
@@ -84,15 +83,50 @@ client.list_intents(
     page: int | None = None,
     page_size: int | None = None,
 ) -> IntentList                    # .items, .total, .page, .page_size (iterable)
+
+client.list_currencies() -> CurrencyList   # public, sent without the API key
 ```
+
+### Currencies
+
+Intents accept `CHF`, `EUR`, `USD` and `GBP` — but only while Qint offers the
+currency. Qint can switch a currency off (and back on) at any time; while it is
+off, `create_intent` in that currency fails with a plain `400` (see
+[Errors](#errors)). `list_currencies()` calls the public
+`GET /api/v1/public/currencies` so you can hide disabled currencies:
+
+```python
+currencies = qint.list_currencies()
+print(currencies.enabled_codes)        # e.g. ["CHF", "EUR", "USD", "GBP"]
+if not currencies.is_enabled("GBP"):
+    ...                                # don't offer GBP at checkout
+for c in currencies:                   # CurrencyAvailability(code, enabled)
+    print(c.code, c.enabled)
+```
+
+The response is cacheable for 30 seconds — cache it on your side rather than
+calling it on every checkout. `code` is a plain string, so currencies added
+later parse without an SDK update.
 
 `Intent` fields: `id`, `status` (an `IntentStatus`), `amount` (a `Decimal`,
 parsed without float rounding), `currency`, `title`, `asset_symbol`,
 `crypto_amount` (8-dp string), `deposit_address`, `checkout_url`, `return_url`,
-`created_at`, `expires_at`, `confirmed_at`, `settled_at`, plus the optional
-`reversed_at`, `fee_amount`, `net_amount`, `settled_amount`, `received_amount`,
-`underpaid_bps`, `credit_usdt` and `credit_rate` (each `None` when the response
-does not include it), plus `raw` (the untouched JSON).
+`created_at`, `expires_at`, `confirmed_at`, `settled_at`, the flags `reversed`
+and `underpaid` (`bool`), plus the optional `reversed_at`, `fee_amount`,
+`net_amount`, `settled_amount`, `received_amount`, `underpaid_bps`,
+`credit_usdt`, `credit_rate` and `credit_asset` (each `None` until known — fee
+and net only once the payment is settled), plus `raw` (the untouched JSON).
+Unknown response fields are ignored, so new server fields never break you.
+
+### Settlement asset
+
+Your balance is held in a stablecoin — **USDC** for merchants registered in the
+European Union (USDT is not authorised under MiCA), **USDT** for everyone else.
+Once a payment is credited, `intent.credit_asset` says which
+(`qint.SettlementAsset.USDT` / `.USDC`; an unknown future value comes through as
+a plain string), `intent.credit_usdt` is the amount credited **in that asset**
+(the name predates USDC) and `intent.credit_rate` is `currency` units per 1 unit
+of it.
 
 Statuses: `initiated`, `pending`, `confirmed`, `settled`, `failed`, `expired`,
 `cancelled`.
@@ -112,13 +146,26 @@ except QintApiError as e:
     print(e.status_code)  # e.g. 403
     print(e.detail)       # e.g. "This API key lacks the Write scope."
     print(e.code)         # e.g. "amount_out_of_range", or None
+    print(e.trace_id)     # request correlation id — quote it to support
     print(e.problem)      # full problem+json dict
 ```
+
+Known codes are exported as constants: `AMOUNT_OUT_OF_RANGE`,
+`RATE_UNAVAILABLE` and `SETTLEMENT_ASSET_MISMATCH` (the last one is returned by
+the dashboard's payout endpoints, not the merchant API — listed for
+completeness). Treat `code` as an open set.
+
+### Disabled currencies
+
+Creating an intent in a currency Qint has switched off fails with a `400`
+without a `code`; `e.detail` reads e.g. *"GBP is currently disabled on Qint.
+currency must be one of: CHF, EUR, USD."* and `e.is_currency_disabled` is
+`True`. Check `list_currencies()` before offering a currency.
 
 ### Payment limits
 
 Each payment must be between CHF 10 and CHF 100'000 (or the equivalent in EUR,
-USD or GBP). Outside that range `create_intent` raises a `400` with
+USD or GBP; a merchant may have an individually agreed cap). Outside that range `create_intent` raises a `400` with
 `e.code == qint.AMOUNT_OUT_OF_RANGE` (`"amount_out_of_range"`) and the numbers
 on `e.min_chf`, `e.max_chf` and `e.amount_chf` (`Decimal`). If no exchange rate
 is available to judge a non-CHF amount it raises a `503` with
@@ -132,9 +179,9 @@ settles. The `payment.status` webhook then carries `underpaid=True`,
 `received_amount` (the fiat amount actually paid, in the intent's currency) and
 `underpaid_bps` (how short, in basis points of the invoice); both are `None`
 otherwise. `Intent` declares the same two fields plus the fee, credit and
-reversal fields listed above. A non-`None` `reversed_at` means the payment was
-reversed after settlement: treat it as not paid even though its status stays
-`settled`.
+reversal fields listed above. `reversed=True` (with `reversed_at`) means the
+payment was reversed after settlement: treat it as not paid even though its
+status stays `settled`.
 
 Network-level failures (DNS/TLS/timeout) raise `QintConnectionError`. Both derive
 from `QintError`.
@@ -168,7 +215,12 @@ def qint_webhook():
 
     event = parse_event(raw_body)
     if event.type == "payment.status" and str(event.status) == "settled":
-        fulfill_order(event.intent_id)
+        if event.reversed:
+            undo_fulfilment(event.intent_id)          # reversed after settlement
+        else:
+            fulfill_order(event.intent_id)
+    # "ping" (dashboard "Send test event") parses to a PingEvent; any other,
+    # future event type: ignore it and still answer 2xx.
 
     mark_processed(event_id)
     return ("", 200)                                  # ack fast
