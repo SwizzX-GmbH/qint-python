@@ -15,7 +15,7 @@ pip install qint-sdk
 Until the first PyPI release is published, install from git:
 
 ```bash
-pip install "git+https://github.com/SwizzX-GmbH/qint-python.git@v0.2.0"
+pip install "git+https://github.com/SwizzX-GmbH/qint-python.git@v0.3.0"
 ```
 
 > **⚠️ Do not run `pip install qint`.** That installs a **different, unrelated
@@ -114,19 +114,22 @@ parsed without float rounding), `currency`, `title`, `asset_symbol`,
 `created_at`, `expires_at`, `confirmed_at`, `settled_at`, the flags `reversed`
 and `underpaid` (`bool`), plus the optional `reversed_at`, `fee_amount`,
 `net_amount`, `settled_amount`, `received_amount`, `underpaid_bps`,
-`credit_usdt`, `credit_rate` and `credit_asset` (each `None` until known — fee
+`credit_amount`, `credit_currency` and `credit_rate` (each `None` until known — fee
 and net only once the payment is settled), plus `raw` (the untouched JSON).
 Unknown response fields are ignored, so new server fields never break you.
 
-### Settlement asset
+### Account Currency and the credit
 
-Your balance is held in a stablecoin — **USDC** for merchants registered in the
-European Union (USDT is not authorised under MiCA), **USDT** for everyone else.
-Once a payment is credited, `intent.credit_asset` says which
-(`qint.SettlementAsset.USDT` / `.USDC`; an unknown future value comes through as
-a plain string), `intent.credit_usdt` is the amount credited **in that asset**
-(the name predates USDC) and `intent.credit_rate` is `currency` units per 1 unit
-of it.
+Your balance is held in fiat, in your **Account Currency** (CHF by default;
+EUR, USD or GBP are possible). The amount a payment adds to it is fixed when the
+buyer is quoted, never by a rate read at settlement. Once a payment is credited,
+`intent.credit_amount` is the amount added to your balance (a `Decimal`, 2
+decimal places), `intent.credit_currency` the currency it is in (your Account
+Currency at quote time) and `intent.credit_rate` the `credit_currency` units per
+1 unit of the invoice `currency` (`1` when they match). All three are `None`
+until credited, and stay `None` on payments settled before the fiat balance
+(20 October 2026). The `payment.status` webhook (`PaymentStatusEvent`) carries
+the same three fields, filled on the `settled` event.
 
 Statuses: `initiated`, `pending`, `confirmed`, `settled`, `failed`, `expired`,
 `cancelled`.
@@ -151,9 +154,9 @@ except QintApiError as e:
 ```
 
 Known codes are exported as constants: `AMOUNT_OUT_OF_RANGE`,
-`RATE_UNAVAILABLE` and `SETTLEMENT_ASSET_MISMATCH` (the last one is returned by
-the dashboard's payout endpoints, not the merchant API — listed for
-completeness). Treat `code` as an open set.
+`RATE_UNAVAILABLE` and `SETTLEMENT_ASSET_MISMATCH` (the last one concerns
+crypto payouts only and is returned by the dashboard's payout endpoints, not the
+merchant API — listed for completeness). Treat `code` as an open set.
 
 ### Disabled currencies
 

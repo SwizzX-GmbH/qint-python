@@ -9,9 +9,9 @@ from typing import Any, Dict, Optional
 AMOUNT_OUT_OF_RANGE = "amount_out_of_range"
 #: No exchange rate was available to judge the limits (HTTP 503 on create).
 RATE_UNAVAILABLE = "rate_unavailable"
-#: A crypto payout was requested in an asset other than the merchant's
-#: settlement asset (HTTP 400). Returned by the dashboard API's payout
-#: endpoints, not by the merchant API — listed for completeness.
+#: Crypto payouts only: a crypto payout was requested in an asset other than
+#: the merchant's crypto payout asset (HTTP 400). Returned by the dashboard
+#: API's payout endpoints, not by the merchant API — listed for completeness.
 SETTLEMENT_ASSET_MISMATCH = "settlement_asset_mismatch"
 
 _STANDARD_PROBLEM_MEMBERS = frozenset({"type", "title", "status", "detail", "instance"})

@@ -14,7 +14,7 @@
 Until the first release lands on PyPI, the SDK installs from git:
 
 ```bash
-pip install "git+https://github.com/SwizzX-GmbH/qint-python.git@v0.2.0"
+pip install "git+https://github.com/SwizzX-GmbH/qint-python.git@v0.3.0"
 ```
 
 ## Before uploading — re-check the name
@@ -48,7 +48,7 @@ Update the version in **two** places so they stay in sync:
 
 Follow SemVer. Commit the bump.
 
-> Nothing is on PyPI yet; `v0.1.0` and `v0.2.0` are git tags only. v0.2.0
+> Nothing is on PyPI yet; `v0.1.0`, `v0.2.0` and `v0.3.0` are git tags only. v0.2.0
 > carries the **breaking** required-`idempotencyKey` change relative to earlier
 > drafts. Whatever version ships first, say so in the release notes.
 
@@ -115,7 +115,7 @@ Confirm the PyPI project page shows **SwizzX GmbH** as owner and links to
 
 ## 7. Tag & release on GitHub
 
-The `v0.1.0` and `v0.2.0` git tags are already pushed. For subsequent releases:
+The `v0.1.0`, `v0.2.0` and `v0.3.0` git tags are already pushed. For subsequent releases:
 
 ```bash
 git tag v<version> && git push origin v<version>

@@ -5,6 +5,33 @@ All notable changes to this project are documented here. This project adheres to
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-20
+
+Follows the Qint API change of 2026-10-20: the merchant balance is now held in
+fiat, in the merchant's Account Currency, instead of a stablecoin.
+
+### Breaking
+
+- `Intent.credit_usdt` and `Intent.credit_asset` are **removed** (the API no
+  longer sends `creditUsdt` / `creditAsset`).
+- `Intent.credit_rate` keeps its name but **changes meaning**: it is now
+  `credit_currency` units per 1 unit of the invoice `currency` (1 when they
+  match). It used to be fiat per stablecoin unit.
+- The `SettlementAsset` enum is removed.
+
+### Added
+
+- `Intent.credit_amount` (`Decimal`, 2 dp) and `Intent.credit_currency` (the
+  Account Currency at quote time): what the payment added to the balance.
+  `None` until credited and on payments settled before 2026-10-20.
+- `PaymentStatusEvent.credit_amount`, `credit_currency` and `credit_rate`,
+  filled on the `settled` event.
+
+### Changed
+
+- `SETTLEMENT_ASSET_MISMATCH` stays; it now concerns crypto payouts only.
+- README: "Settlement asset" replaced by "Account Currency and the credit".
+
 ## [0.2.0] - 2026-10-14
 
 ### Added

@@ -34,7 +34,6 @@ from .models import (
     IntentStatus,
     PaymentStatusEvent,
     PingEvent,
-    SettlementAsset,
 )
 from .webhooks import (
     EVENT_ID_HEADER,
@@ -69,7 +68,6 @@ __all__ = [
     "PaymentStatusEvent",
     "PingEvent",
     "WebhookEvent",
-    "SettlementAsset",
     "CurrencyAvailability",
     "CurrencyList",
     "verify_webhook_signature",

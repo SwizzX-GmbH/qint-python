@@ -41,30 +41,6 @@ class Currency(str, Enum):
         return self.value
 
 
-class SettlementAsset(str, Enum):
-    """The stablecoin a merchant's balance is held in.
-
-    Merchants registered in the European Union settle in ``USDC`` (USDT is not
-    authorised under MiCA); all other merchants settle in ``USDT``.
-    """
-
-    USDT = "USDT"
-    USDC = "USDC"
-
-    def __str__(self) -> str:
-        return self.value
-
-
-def _to_settlement_asset(value: Any) -> Optional[Union[SettlementAsset, str]]:
-    """Coerce a wire settlement asset, tolerating unknown values."""
-    if value is None:
-        return None
-    try:
-        return SettlementAsset(value)
-    except ValueError:
-        return str(value)
-
-
 def _to_status(value: Any) -> Union[IntentStatus, str]:
     """Coerce a wire status to :class:`IntentStatus`, tolerating unknown values."""
     if value is None:
@@ -106,13 +82,14 @@ class Intent:
     - ``received_amount``: the fiat amount actually paid when the payment
       settled short within the merchant's accepted underpayment.
     - ``underpaid_bps``: how short, in basis points of the invoice.
-    - ``credit_usdt`` / ``credit_rate``: the amount credited to the balance
-      and the rate it was booked at (``currency`` units per 1 unit of
-      ``credit_asset``). The name ``credit_usdt`` predates USDC: for a merchant
-      settling in USDC the amount is USDC.
-    - ``credit_asset``: the stablecoin the credit was booked in
-      (:class:`SettlementAsset` — ``USDC`` for merchants registered in the EU,
-      ``USDT`` otherwise); ``None`` until credited.
+    - ``credit_amount``: the amount credited to the merchant balance, in
+      ``credit_currency`` (2 decimal places).
+    - ``credit_currency``: the merchant's Account Currency at the moment the
+      buyer was quoted (e.g. ``"CHF"``).
+    - ``credit_rate``: ``credit_currency`` units per 1 unit of ``currency``,
+      fixed when the buyer was quoted (``1`` when the two match).
+    - The three credit fields are ``None`` until credited, and on payments
+      settled before the fiat balance (20 October 2026).
     - ``reversed`` / ``reversed_at``: set when the payment was reversed after
       settlement; the status stays ``settled`` but treat it as not paid.
     - ``underpaid``: the buyer sent less than the quoted crypto amount (a flag,
@@ -139,9 +116,9 @@ class Intent:
     settled_amount: Optional[Decimal] = None
     received_amount: Optional[Decimal] = None
     underpaid_bps: Optional[int] = None
-    credit_usdt: Optional[Decimal] = None
+    credit_amount: Optional[Decimal] = None
+    credit_currency: Optional[str] = None
     credit_rate: Optional[Decimal] = None
-    credit_asset: Optional[Union[SettlementAsset, str]] = None
     reversed: bool = False
     underpaid: bool = False
     #: The untouched JSON object the server returned, for forward compatibility.
@@ -170,9 +147,9 @@ class Intent:
             settled_amount=_to_decimal(data.get("settledAmount")),
             received_amount=_to_decimal(data.get("receivedAmount")),
             underpaid_bps=_to_int(data.get("underpaidBps")),
-            credit_usdt=_to_decimal(data.get("creditUsdt")),
+            credit_amount=_to_decimal(data.get("creditAmount")),
+            credit_currency=data.get("creditCurrency"),
             credit_rate=_to_decimal(data.get("creditRate")),
-            credit_asset=_to_settlement_asset(data.get("creditAsset")),
             reversed=bool(data.get("reversed") or data.get("reversedAt")),
             underpaid=bool(data.get("underpaid", False)),
             raw=data,
@@ -215,7 +192,10 @@ class PaymentStatusEvent:
     the payment settled short within the merchant's accepted underpayment, and
     ``None`` otherwise. ``expected_crypto_amount`` / ``received_crypto_amount``
     are 8-decimal-place strings. ``reversed`` / ``reversed_at`` flag a payment
-    reversed after settlement.
+    reversed after settlement. ``credit_amount`` (2 dp, in ``credit_currency``,
+    the merchant's Account Currency) and ``credit_rate`` (``credit_currency``
+    units per 1 unit of ``currency``) are filled on the ``settled`` event and
+    ``None`` before.
     """
 
     type: str
@@ -234,6 +214,9 @@ class PaymentStatusEvent:
     underpaid_bps: Optional[int] = None
     reversed: Optional[bool] = None
     reversed_at: Optional[str] = None
+    credit_amount: Optional[Decimal] = None
+    credit_currency: Optional[str] = None
+    credit_rate: Optional[Decimal] = None
     raw: Dict[str, Any] = field(default_factory=dict, repr=False)
 
     @classmethod
@@ -255,6 +238,9 @@ class PaymentStatusEvent:
             underpaid_bps=_to_int(data.get("underpaidBps")),
             reversed=data.get("reversed"),
             reversed_at=data.get("reversedAt"),
+            credit_amount=_to_decimal(data.get("creditAmount")),
+            credit_currency=data.get("creditCurrency"),
+            credit_rate=_to_decimal(data.get("creditRate")),
             raw=data,
         )
 

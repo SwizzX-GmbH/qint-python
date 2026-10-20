@@ -140,9 +140,15 @@ def test_parse_event_maps_accepted_underpayment_fields():
         "receivedCryptoAmount": "124.05063291",
         "reversed": False,
         "reversedAt": None,
+        "creditAmount": 109.83,
+        "creditCurrency": "CHF",
+        "creditRate": 1.1207,
     }
     event = parse_event(json.dumps(body).encode("utf-8"))
     assert event.currency == "GBP"
+    assert event.credit_amount == Decimal("109.83")
+    assert event.credit_currency == "CHF"
+    assert event.credit_rate == Decimal("1.1207")
     assert event.underpaid is True
     assert event.received_amount == Decimal("98.0")
     assert event.underpaid_bps == 200
@@ -158,6 +164,9 @@ def test_parse_event_without_underpayment_fields_leaves_them_none():
     assert event.underpaid_bps is None
     assert event.reversed is None
     assert event.reversed_at is None
+    assert event.credit_amount is None
+    assert event.credit_currency is None
+    assert event.credit_rate is None
 
 
 def test_parse_event_ping():

@@ -11,7 +11,6 @@ from qint import (
     SETTLEMENT_ASSET_MISMATCH,
     Currency,
     CurrencyList,
-    SettlementAsset,
     __version__,
     Intent,
     IntentList,
@@ -253,8 +252,9 @@ def test_intent_parses_fee_underpayment_and_reversal_fields():
         "settledAmount": None,
         "receivedAmount": 98.00,
         "underpaidBps": 200,
-        "creditUsdt": 108.9,
-        "creditRate": 0.8909,
+        "creditAmount": 109.83,
+        "creditCurrency": "CHF",
+        "creditRate": 1.1207,
         "reversedAt": "2026-07-09T09:00:00Z",
     }
     client = make_client(FakeTransport(status=200, body=body))
@@ -266,8 +266,9 @@ def test_intent_parses_fee_underpayment_and_reversal_fields():
     assert intent.settled_amount is None
     assert intent.received_amount == Decimal("98.00")
     assert intent.underpaid_bps == 200
-    assert intent.credit_usdt == Decimal("108.9")
-    assert intent.credit_rate == Decimal("0.8909")
+    assert intent.credit_amount == Decimal("109.83")
+    assert intent.credit_currency == "CHF"
+    assert intent.credit_rate == Decimal("1.1207")
     assert intent.reversed_at == "2026-07-09T09:00:00Z"
 
 
@@ -281,7 +282,8 @@ def test_intent_without_new_fields_leaves_them_none():
     assert intent.settled_amount is None
     assert intent.received_amount is None
     assert intent.underpaid_bps is None
-    assert intent.credit_usdt is None
+    assert intent.credit_amount is None
+    assert intent.credit_currency is None
     assert intent.credit_rate is None
     assert intent.reversed_at is None
 
@@ -388,7 +390,7 @@ def test_list_currencies_empty_body_is_empty_list():
     assert client.list_currencies().enabled_codes == []
 
 
-def test_intent_parses_credit_asset_and_flags():
+def test_intent_parses_fiat_credit_and_flags():
     data = dict(
         INTENT_JSON,
         status="settled",
@@ -396,22 +398,25 @@ def test_intent_parses_credit_asset_and_flags():
         underpaid=True,
         feeAmount=0.25,
         netAmount=49.65,
-        creditUsdt=55.123456,
-        creditRate=0.9007,
-        creditAsset="USDC",
+        creditAmount=46.66,
+        creditCurrency="CHF",
+        creditRate=0.9389,
     )
     intent = Intent.from_dict(data)
-    assert intent.credit_asset is SettlementAsset.USDC
-    assert intent.credit_usdt == Decimal("55.123456")
+    assert intent.credit_amount == Decimal("46.66")
+    assert intent.credit_currency == "CHF"
+    assert intent.credit_rate == Decimal("0.9389")
+    assert not hasattr(intent, "credit_usdt")
+    assert not hasattr(intent, "credit_asset")
     assert intent.underpaid is True
     assert intent.reversed is False
     assert intent.fee_amount == Decimal("0.25")
     assert intent.net_amount == Decimal("49.65")
 
 
-def test_intent_unknown_credit_asset_and_unknown_fields_tolerated():
-    intent = Intent.from_dict(dict(INTENT_JSON, creditAsset="EURC", brandNew={"x": 1}))
-    assert intent.credit_asset == "EURC"
+def test_intent_unknown_credit_currency_and_unknown_fields_tolerated():
+    intent = Intent.from_dict(dict(INTENT_JSON, creditCurrency="SEK", brandNew={"x": 1}))
+    assert intent.credit_currency == "SEK"
     assert intent.raw["brandNew"] == {"x": 1}
 
 
@@ -422,14 +427,16 @@ def test_intent_null_fee_and_credit_until_settled():
         underpaid=False,
         feeAmount=None,
         netAmount=None,
-        creditUsdt=None,
+        creditAmount=None,
+        creditCurrency=None,
         creditRate=None,
-        creditAsset=None,
     )
     intent = Intent.from_dict(data)
     assert intent.fee_amount is None
     assert intent.net_amount is None
-    assert intent.credit_asset is None
+    assert intent.credit_amount is None
+    assert intent.credit_currency is None
+    assert intent.credit_rate is None
     assert intent.reversed is False
     assert intent.underpaid is False
 
@@ -444,11 +451,6 @@ def test_intent_reversed_flag_and_defaults():
     assert legacy.reversed is True
     plain = Intent.from_dict(INTENT_JSON)
     assert plain.reversed is False and plain.underpaid is False
-
-
-def test_settlement_asset_values():
-    assert [a.value for a in SettlementAsset] == ["USDT", "USDC"]
-    assert str(SettlementAsset.USDC) == "USDC"
 
 
 def test_disabled_currency_surfaces_400_and_detail():
@@ -501,4 +503,4 @@ def test_user_agent_carries_version():
     t = FakeTransport(status=200, body=INTENT_JSON)
     make_client(t).get_intent("pi_abc123")
     assert t.last["headers"]["User-Agent"] == f"qint-python/{__version__}"
-    assert __version__ == "0.2.0"
+    assert __version__ == "0.3.0"
